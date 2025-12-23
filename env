@@ -1,0 +1,34 @@
+# 🌤️ WeatherWindy — Cấu hình môi trường
+
+# Tên dự án
+APP_NAME=WeatherWindy
+
+# Cổng chạy ứng dụng
+PORT=8080
+
+# Timezone mặc định
+DEFAULT_TZ=Asia/Ho_Chi_Minh
+
+# 🌡️ Các trường dữ liệu tức thời (current)
+OPEN_METEO_FIELDS_CURRENT=temperature_2m,apparent_temperature,relative_humidity_2m,pressure_msl,wind_speed_10m,wind_gusts_10m,wind_direction_10m,visibility,weather_code,uv_index,precipitation,precipitation_probability,shortwave_radiation
+
+# ⏱️ Các trường dữ liệu theo giờ (hourly)
+OPEN_METEO_FIELDS_HOURLY=temperature_2m,apparent_temperature,relative_humidity_2m,pressure_msl,wind_speed_10m,wind_gusts_10m,uv_index,precipitation,shortwave_radiation
+
+# 📅 Các trường dữ liệu theo ngày (daily)
+OPEN_METEO_FIELDS_DAILY=temperature_2m_max,temperature_2m_min,uv_index_max,precipitation_sum,relative_humidity_2m_mean,pressure_msl_mean,shortwave_radiation_sum,sunrise,sunset,wind_speed_10m_max,wind_gusts_10m_max,cloudcover_mean,dewpoint_2m_mean,daylight_duration
+
+# 🧠 Cache TTL (giây)
+CACHE_TTL_SECONDS=300
+
+# Chiến lược hợp nhất dữ liệu (avg | openmeteo)
+MERGE_STRATEGY=openmeteo
+
+# 📍 Ngôn ngữ mặc định cho API Open-Meteo
+OPEN_METEO_LANG=vi
+
+# 🌍 Số lượng kết quả trả về khi geocode
+OPEN_METEO_GEOCODE_COUNT=1
+
+# ⏱️ Timeout cho request (giây)
+REQUEST_TIMEOUT=15
