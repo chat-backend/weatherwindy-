@@ -1,6 +1,8 @@
 # services/overview.py
-from typing import Dict, Any, List, Tuple, Optional
 import datetime
+from zoneinfo import ZoneInfo
+from typing import Dict, Any, List, Tuple, Optional
+
 from services.temperature import (
     compute_avg_temp, compute_diurnal_range, compute_hourly_anomaly, classify_temp_level
 )
@@ -68,7 +70,7 @@ def build_overview_block(
         try:
             times = hourly.get("series", {}).get("time", [])
             precips = hourly.get("series", {}).get("precipitation", [])
-            today_str = datetime.date.today().isoformat()
+            today_str = datetime.datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).date().isoformat()
             today_precips = [
                 _to_float(v) or 0.0
                 for i, v in enumerate(precips)
@@ -88,7 +90,7 @@ def build_overview_block(
     hours_count = len(today_precips) if isinstance(today_precips, list) else 0
     if hours_count == 0:
         times = hourly.get("series", {}).get("time", [])
-        today_str = datetime.date.today().isoformat()
+        today_str = datetime.datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).date().isoformat()
         def day_of(t): return t[:10] if isinstance(t, str) and len(t) >= 10 else None
         hours_count = sum(1 for t in times if day_of(t) == today_str)
 
@@ -104,7 +106,7 @@ def build_overview_block(
         try:
             times = hourly.get("series", {}).get("time", [])
             probs = hourly.get("series", {}).get("precipitation_probability", [])
-            today_str = datetime.date.today().isoformat()
+            today_str = datetime.datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).date().isoformat()
             today_probs = [
                 _to_float(v) or 0.0
                 for i, v in enumerate(probs)
@@ -124,7 +126,7 @@ def build_overview_block(
     cloud_dew_summary = build_cloud_dew_summary(cloudcover_mean, dewpoint_mean)
     cloud_values = cloud_dew_summary["values"]
     cloud_lines = cloud_dew_summary["lines"]
-    
+
     # Độ ẩm
     humidity_day = daily.get("avg_humidity")
     humidity_level = classify_humidity(humidity_day)
@@ -137,33 +139,33 @@ def build_overview_block(
     pressure_level = classify_pressure(pressure_day, region=region)
 
     # Bức xạ & UV
-    now = datetime.datetime.now()
-    is_night = _is_night(now)
+    now_local = datetime.datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
+    is_night = _is_night(now_local)
 
     avg_solar_day = daily.get("avg_solar") or daily.get("solar_radiation_avg")
     solar_sum_day = daily.get("solar_radiation_sum")
     avg_uv_day    = daily.get("uv_index_avg")
     uv_max_val    = uv_max_day or daily.get("uv_index_max")
 
-    solar_level = None
-    uv_level = None
+    solar_level  = None
+    uv_level_avg = None
+    uv_level_max = None
 
+    # Hiển thị
     lines: List[str] = []
     lines.append(f"🌤️ Dự báo: {status_text or '—'}")
 
     # 🕒 Thời gian quan trắc
-    from zoneinfo import ZoneInfo
     weekday_map = {
         0: "Thứ Hai", 1: "Thứ Ba", 2: "Thứ Tư",
         3: "Thứ Năm", 4: "Thứ Sáu", 5: "Thứ Bảy", 6: "Chủ Nhật"
     }
-    now_local = datetime.datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
     weekday_vi = weekday_map[now_local.weekday()]
     timestamp = now_local.strftime(f"%H:%M • {weekday_vi}, %d/%m/%Y")
     lines.append(f"🕒 Thời gian quan trắc: {timestamp}")
     lines.append(f"📄 Nguồn dữ liệu: Open_MeteoAPI")
     lines.append("")
-  
+ 
     if tmin is not None and tmax is not None:
         lines.append(f"🌡️ Dao động ngày: {fmt(_round1(_to_float(tmin)), '°C')} / {fmt(_round1(_to_float(tmax)), '°C')}")
     if avg_temp_day is not None:
@@ -212,32 +214,24 @@ def build_overview_block(
     if pressure_day is not None:
         lines.append(f"⚖️ Áp suất trung bình ngày: {fmt(_round1(_to_float(pressure_day)), ' hPa')} ({pressure_level if pressure_level else '—'})")
 
-    # Bức xạ & UV (đảm bảo biến cục bộ luôn tồn tại)
-    solar_level  = None
-    uv_level_avg = None
-    uv_level_max = None
-
+    # Bức xạ & UV
     if is_night:
         lines.append("🔆 Năng lượng bức xạ tích lũy trong ngày: 0 Wh/m² (🌙 Ban đêm)")
         lines.append("☀️ UV tối đa: 0 (🌙 Ban đêm, UV = 0)")
-        # Không hiển thị UV trung bình khi ban đêm
     else:
-        # Bức xạ
         avg_solar_val = _to_float(avg_solar_day) if avg_solar_day is not None else 0
-        solar_level = classify_solar(avg_solar_val, region=region, now=now)
+        solar_level = classify_solar(avg_solar_val, region=region, now=now_local)
 
         lines.append(
             f"🔆 Năng lượng bức xạ tích lũy trong ngày: "
             f"{_format_solar_sum(solar_sum_day) if solar_sum_day is not None else '0 Wh/m²'}"
         )
 
-        # UV trung bình: chỉ hiển thị khi có dữ liệu
         if avg_uv_day is not None:
             avg_uv_val = _to_float(avg_uv_day)
             uv_level_avg = classify_uv(avg_uv_val)
             lines.append(f"☀️ UV trung bình ngày: {fmt(avg_uv_val)} ({uv_level_avg or '—'})")
 
-        # UV tối đa: luôn hiển thị, fallback về 0 nếu thiếu dữ liệu
         uv_max_val_checked = _to_float(uv_max_val) if uv_max_val is not None else 0
         uv_level_max = classify_uv(uv_max_val_checked)
         lines.append(f"☀️ UV tối đa trong ngày: {fmt(uv_max_val_checked)} ({uv_level_max or '—'})")
@@ -245,12 +239,22 @@ def build_overview_block(
     if sunrise:
         try:
             sunrise_dt = datetime.datetime.fromisoformat(str(sunrise))
+            # API trả về UTC → gán tzinfo=UTC rồi chuyển sang ICT
+            if sunrise_dt.tzinfo is None:
+                sunrise_dt = sunrise_dt.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Asia/Ho_Chi_Minh"))
+            else:
+                sunrise_dt = sunrise_dt.astimezone(ZoneInfo("Asia/Ho_Chi_Minh"))
             lines.append(f"🌅 Mặt trời mọc: {sunrise_dt.strftime('%H:%M, %d/%m/%Y')}")
         except Exception:
             lines.append(f"🌅 Mặt trời mọc: {sunrise}")
+
     if sunset:
         try:
             sunset_dt = datetime.datetime.fromisoformat(str(sunset))
+            if sunset_dt.tzinfo is None:
+                sunset_dt = sunset_dt.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Asia/Ho_Chi_Minh"))
+            else:
+                sunset_dt = sunset_dt.astimezone(ZoneInfo("Asia/Ho_Chi_Minh"))
             lines.append(f"🌇 Mặt trời lặn: {sunset_dt.strftime('%H:%M, %d/%m/%Y')}")
         except Exception:
             lines.append(f"🌇 Mặt trời lặn: {sunset}")
@@ -296,7 +300,6 @@ def build_overview_block(
         "dewpoint_level": cloud_values["dewpoint_level"],
         "dewpoint_mean": cloud_values["dewpoint"],                 # alias
 
-        
         # Độ ẩm
         "humidity_day": _round1(_to_float(humidity_day)),
         "humidity_level": humidity_level,
@@ -317,9 +320,10 @@ def build_overview_block(
         "uv_max_day": _round1(_to_float(uv_max_val)) if uv_max_val is not None else 0,        # alias
         "uv_level_avg": uv_level_avg if uv_level_avg is not None else "🌙 Ban đêm, UV = 0",
         "uv_level_max": uv_level_max if uv_level_max is not None else "🌙 Ban đêm, UV = 0",
+
         # Mặt trời mọc/lặn
-        "sunrise": sunrise,
-        "sunset": sunset,
+        "sunrise": sunrise_dt.strftime('%H:%M, %d/%m/%Y') if 'sunrise_dt' in locals() else sunrise,
+        "sunset": sunset_dt.strftime('%H:%M, %d/%m/%Y') if 'sunset_dt' in locals() else sunset,
     }
 
     # Trả về text + values

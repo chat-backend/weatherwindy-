@@ -1,5 +1,6 @@
 # services/current.py
 import datetime
+from zoneinfo import ZoneInfo
 from typing import Dict, Any, List, Tuple, Optional
 
 from services.temperature import (
@@ -9,7 +10,7 @@ from services.temperature import (
 from services.rain import compute_rain_intensity, classify_rain_level, interpret_rain_probability
 from services.wind import classify_wind_beaufort, classify_wind_level, interpret_gust, wind_direction_to_text
 from services.cloud_dew import build_cloud_dew_summary
-from services.visibility import classify_visibility, analyze_visibility
+from services.visibility import classify_visibility
 from services.humidity import classify_humidity, adjust_feels_by_humidity
 from services.pressure import classify_pressure
 from services.solar_uv import classify_solar, classify_uv, _is_night
@@ -60,7 +61,8 @@ def build_current_block(
         series_time   = unified.get("hourly", {}).get("series", {}).get("time", [])
         if series_precip and series_time:
             try:
-                now_str = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:00")
+                now_local = datetime.datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
+                now_str = now_local.strftime("%Y-%m-%dT%H:00")
                 if now_str in series_time:
                     idx = series_time.index(now_str)
                     rain = series_precip[idx]
@@ -101,7 +103,6 @@ def build_current_block(
     # Mây, sương
     cloud_dew_summary = build_cloud_dew_summary(cloudcover, dewpoint)
     cloud_values = cloud_dew_summary["values"]
-    cloud_lines = cloud_dew_summary["lines"]
 
     # Tầm nhìn
     vis_val = None
@@ -119,46 +120,28 @@ def build_current_block(
     pressure_level = classify_pressure(pmsl, region=region)
 
     # Bức xạ/UV
-    now = datetime.datetime.now()
-    is_night = _is_night(now)
+    now_local = datetime.datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
+    is_night = _is_night(now_local)
 
     solar_val = _round1(_to_float(solar)) if not is_night else None
     uv_val    = _round1(_to_float(uv_now)) if not is_night else None
 
-    # Khởi tạo biến để tránh lỗi chưa gán
-    solar_level = None
-    uv_level_now = None
-    solar_text = None
-    uv_text = None
-
-    if is_night:
-        solar_level = "🌙 Ban đêm, không có bức xạ mặt trời."
-        uv_level_now = "🌙 Ban đêm, chỉ số UV bằng 0."
-        solar_text  = "🔆 Bức xạ mặt trời: — (🌙 Ban đêm)"
-        uv_text     = "☀️ UV hiện tại: — (🌙 Ban đêm)"
-    else:
-        solar_level = classify_solar(solar_val, region=region, cloudcover=cloudcover, now=now)
-        uv_level_now = classify_uv(uv_val, precipitation=rain, cloudcover=cloudcover, now=now)
-        solar_text  = f"🔆 Bức xạ mặt trời hiện tại: {fmt(solar_val, ' W/m²')} ({solar_level if solar_level else '—'})"
-        uv_text     = f"☀️ UV hiện tại: {fmt(uv_val)} ({uv_level_now if uv_level_now else '—'})"
-
     # Hiển thị
     lines: List[str] = []
     lines.append(f"🌤️ Trạng thái: {status_text or '—'}")
-    
+
     # 🕒 Thời gian quan trắc
-    from zoneinfo import ZoneInfo
     weekday_map = {
         0: "Thứ Hai", 1: "Thứ Ba", 2: "Thứ Tư",
         3: "Thứ Năm", 4: "Thứ Sáu", 5: "Thứ Bảy", 6: "Chủ Nhật"
     }
-    now_local = datetime.datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
     weekday_vi = weekday_map[now_local.weekday()]
     timestamp = now_local.strftime(f"%H:%M • {weekday_vi}, %d/%m/%Y")
     lines.append(f"🕒 Thời gian quan trắc: {timestamp}")
     lines.append(f"📄 Nguồn dữ liệu: Open_MeteoAPI")
     lines.append("")
 
+    # Nhiệt độ, mưa, gió, mây, sương, tầm nhìn, độ ẩm, áp suất
     if temp is not None:
         lines.append(f"🌡️ Nhiệt độ hiện tại: {fmt(_round1(_to_float(temp)), '°C')}")
     if adj_feels is not None:
@@ -171,7 +154,7 @@ def build_current_block(
     if rain is not None:
         lines.append(f"🌧️ Lượng mưa hiện tại: {fmt(_round1(_to_float(rain)), ' mm/h')}")
     if rain_prob is not None:
-        lines.append(f"📊 Xác suất mưa hiện tại: {fmt(_round1(_to_float(rain_prob)), '%')} ({rain_prob_text if rain_prob_text else '—'})")
+        lines.append(f"📊 Xác suất mưa hiện tại: {fmt(_round1(_to_float(rain_prob)), '%')} ({rain_prob_text or '—'})")
     if intensity_ratio is not None:
         lines.append(f"⏱️ Cường độ mưa hiện tại: {fmt(_round1(_to_float(intensity_ratio)), '×')} so với trung bình giờ")
     if rain_level_text:
@@ -193,9 +176,9 @@ def build_current_block(
         lines.append(f"↔️ Hướng gió: {fmt(wind_dir, '°')} ({wind_direction_to_text(wind_dir)})")
 
     if cloud_values["cloudcover"] is not None:
-        lines.append(f"☁️ Độ che phủ mây trung bình: {cloud_values['cloudcover']}% ({cloud_values['cloudcover_level'] if cloud_values['cloudcover_level'] else '—'})")
+        lines.append(f"☁️ Độ che phủ mây trung bình: {cloud_values['cloudcover']}% ({cloud_values['cloudcover_level'] or '—'})")
     if cloud_values["dewpoint"] is not None:
-        lines.append(f"🌫️ Điểm sương trung bình: {cloud_values['dewpoint']}°C ({cloud_values['dewpoint_level'] if cloud_values['dewpoint_level'] else '—'})")
+        lines.append(f"🌫️ Điểm sương trung bình: {cloud_values['dewpoint']}°C ({cloud_values['dewpoint_level'] or '—'})")
 
     # Tầm nhìn
     if vis_val is not None:
@@ -208,34 +191,23 @@ def build_current_block(
         lines.append("🏷️ Mức độ tầm nhìn: —")
 
     if rh is not None:
-        lines.append(f"💧 Độ ẩm hiện tại: {fmt(_round1(_to_float(rh)), '%')} ({humidity_level if humidity_level else '—'})")
+        lines.append(f"💧 Độ ẩm hiện tại: {fmt(_round1(_to_float(rh)), '%')} ({humidity_level or '—'})")
     if adjusted_feels_humidity is not None:
-        lines.append(
-            f"🤔 Cảm giác thực tế (điều chỉnh theo độ ẩm): {fmt(_round1(_to_float(adjusted_feels_humidity)), '°C')}"
-        )
+        lines.append(f"🤔 Cảm giác thực tế (điều chỉnh theo độ ẩm): {fmt(_round1(_to_float(adjusted_feels_humidity)), '°C')}")
 
     if pmsl is not None:
-        lines.append(
-            f"⚖️ Áp suất hiện tại: {fmt(_round1(_to_float(pmsl)), ' hPa')} "
-            f"({pressure_level if pressure_level else '—'})"
-        )
+        lines.append(f"⚖️ Áp suất hiện tại: {fmt(_round1(_to_float(pmsl)), ' hPa')} ({pressure_level or '—'})")
 
-    # Bức xạ/UV (đảm bảo biến cục bộ luôn tồn tại)
-    uv_level_now = None
-    solar_level  = None
-
+    # Bức xạ/UV
     if is_night:
-        # Ban đêm: không phân loại, không dùng dữ liệu; chỉ báo 0
         lines.append("🔆 Bức xạ mặt trời hiện tại: 0 W/m² (🌙 Ban đêm)")
         lines.append("☀️ UV hiện tại: 0 (🌙 Ban đêm)")
     else:
-        # Ban ngày: xử lý đầy đủ. Lưu ý: solar_val, uv_val đã được tính ở trên
         if solar_val is not None:
-            solar_level = classify_solar(solar_val, region=region, cloudcover=cloudcover, now=now)
+            solar_level = classify_solar(solar_val, region=region, cloudcover=cloudcover, now=now_local)
             lines.append(f"🔆 Bức xạ mặt trời hiện tại: {fmt(solar_val, ' W/m²')} ({solar_level or '—'})")
-
         if uv_val is not None:
-            uv_level_now = classify_uv(uv_val, precipitation=rain, cloudcover=cloudcover, now=now)
+            uv_level_now = classify_uv(uv_val, precipitation=rain, cloudcover=cloudcover, now=now_local)
             lines.append(f"☀️ UV hiện tại: {fmt(uv_val)} ({uv_level_now or '—'})")
 
     # Ghép dữ liệu thô thành text
@@ -284,5 +256,3 @@ def build_current_block(
 
     # Trả về text + values
     return block_text, values
-
-
