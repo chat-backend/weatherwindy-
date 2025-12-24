@@ -198,17 +198,43 @@ def build_current_block(
     if pmsl is not None:
         lines.append(f"⚖️ Áp suất hiện tại: {fmt(_round1(_to_float(pmsl)), ' hPa')} ({pressure_level or '—'})")
 
-    # Bức xạ/UV
+    # --- BỨC XẠ / UV ---
+    solar_level = None
+    uv_level_now = None
+
     if is_night:
+        # Ban đêm: luôn gán giá trị mặc định
+        solar_val = 0
+        uv_val = 0
         lines.append("🔆 Bức xạ mặt trời hiện tại: 0 W/m² (🌙 Ban đêm)")
         lines.append("☀️ UV hiện tại: 0 (🌙 Ban đêm)")
     else:
+        # Ban ngày: xử lý an toàn
         if solar_val is not None:
-            solar_level = classify_solar(solar_val, region=region, cloudcover=cloudcover, now=now_local)
-            lines.append(f"🔆 Bức xạ mặt trời hiện tại: {fmt(solar_val, ' W/m²')} ({solar_level or '—'})")
+            solar_level = classify_solar(
+                solar_val,
+                region=region,
+                cloudcover=cloudcover,
+                now=now_local
+            )
+            lines.append(
+                f"🔆 Bức xạ mặt trời hiện tại: {fmt(solar_val, ' W/m²')} ({solar_level or '—'})"
+            )
+        else:
+            lines.append("🔆 Bức xạ mặt trời hiện tại: — W/m²")
+
         if uv_val is not None:
-            uv_level_now = classify_uv(uv_val, precipitation=rain, cloudcover=cloudcover, now=now_local)
-            lines.append(f"☀️ UV hiện tại: {fmt(uv_val)} ({uv_level_now or '—'})")
+            uv_level_now = classify_uv(
+                uv_val,
+                precipitation=rain,
+                cloudcover=cloudcover,
+                now=now_local
+            )
+            lines.append(
+                f"☀️ UV hiện tại: {fmt(uv_val)} ({uv_level_now or '—'})"
+            )
+        else:
+            lines.append("☀️ UV hiện tại: —")
 
     # Ghép dữ liệu thô thành text
     block_text = "\n".join(lines)
